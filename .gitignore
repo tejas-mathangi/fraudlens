@@ -13,6 +13,9 @@ __pycache__/
 
 # Data files (too large for git)
 data/
+data/elliptic_bitcoin_dataset/elliptic_txs_features.csv
+data/elliptic_bitcoin_dataset/elliptic_txs_edgelist.csv
+data/elliptic_bitcoin_dataset/elliptic_txs_classes.csv
 
 # Saved models
 models/
