@@ -1,0 +1,25 @@
+cat > .gitignore << 'EOF'
+# Virtual environment
+venv/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Data files (too large for git)
+data/
+
+# Saved models
+models/
+
+# Mac junk
+.DS_Store
+
+# Environment variables
+.env
+EOF
