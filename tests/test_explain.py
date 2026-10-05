@@ -70,3 +70,28 @@ def test_candidate_picks_prefer_confirmed_illicit(graph):
     assert len(picks) <= 4
     # All but the trailing contrast node should be confirmed illicit.
     assert all(y[p] == 1 for p in picks[:-1])
+
+
+def test_subgraph_uses_the_undirected_neighbourhood(graph):
+    """Regression: the directed flow returned a 2-node subgraph for a degree-8 node.
+
+    Elliptic edges are directed, and k_hop_subgraph's default flow walks only the
+    in-edges, so an explanation showed one neighbour for a well-connected node.
+    """
+    import numpy as np
+    import torch
+
+    model = _model(graph)
+    # Degree on the undirected view, which is what the UI reports.
+    ei = graph.data.edge_index.numpy()
+    node = int(np.bincount(np.concatenate([ei[0], ei[1]]), minlength=graph.num_nodes).argmax())
+    undirected_neighbours = set(ei[1][ei[0] == node]) | set(ei[0][ei[1] == node])
+
+    exp = explain_node(model, graph.data, node_idx=node)
+    subset = set(exp.subset.tolist())
+
+    # Every 1-hop neighbour must be in the 2-hop subgraph, whichever way its edge points.
+    missing = undirected_neighbours - subset
+    assert not missing, f"directed flow dropped neighbours {sorted(missing)}"
+    assert len(subset) > len(undirected_neighbours)
+    assert isinstance(exp.sub_edge_index, (np.ndarray, torch.Tensor))
