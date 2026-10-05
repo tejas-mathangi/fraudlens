@@ -1,0 +1,150 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Colour tokens.
+ *
+ * The data-viz palette here is the validated reference instance, not taste:
+ * `validate_palette.js` rejected the obvious illicit=red / licit=green pairing
+ * (CVD ΔE 4.1 on deuteranopia — indistinguishable for red-green colourblind
+ * readers). Chart identity therefore uses categorical slots 1 and 2 (blue,
+ * orange), which pass every gate all-pairs in both modes:
+ *   light  CVD ΔE 24.7 · normal ΔE 33.6
+ *   dark   CVD ΔE 26.8 · normal ΔE 31.8
+ *
+ * Risk magnitude (a continuous 0..1 score) uses a single-hue blue ramp, never a
+ * green-to-red rainbow. The status colours are used only on badges, which always
+ * carry a text label, so colour never encodes meaning on its own.
+ */
+:root {
+  color-scheme: light;
+
+  --bg: #f6f6f4;
+  --surface: #fcfcfb;
+  --raised: #ffffff;
+  --line: #e3e2dd;
+
+  --text-primary: #0b0b0b;
+  --text-secondary: #52514e;
+  --text-muted: #85837c;
+
+  /* Categorical — slot 1 / slot 2 */
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+
+  /* Sequential blue ramp, light → dark (risk magnitude) */
+  --risk-100: #cde2fb;
+  --risk-250: #86b6ef;
+  --risk-400: #3987e5;
+  --risk-550: #1c5cab;
+  --risk-700: #0d366b;
+
+  --status-good: #0ca30c;
+  --status-warning: #fab219;
+  --status-critical: #d03b3b;
+
+  --accent: #2a78d6;
+  --unknown: #85837c;
+
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.04), 0 1px 3px rgb(0 0 0 / 0.06);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+
+    --bg: #121211;
+    --surface: #1a1a19;
+    --raised: #232321;
+    --line: #35352f;
+
+    --text-primary: #ffffff;
+    --text-secondary: #c3c2b7;
+    --text-muted: #918f85;
+
+    --series-1: #3987e5;
+    --series-2: #d95926;
+
+    --risk-100: #184f95;
+    --risk-250: #256abf;
+    --risk-400: #3987e5;
+    --risk-550: #6da7ec;
+    --risk-700: #b7d3f6;
+
+    --accent: #3987e5;
+    --unknown: #918f85;
+
+    --shadow-card: 0 1px 2px rgb(0 0 0 / 0.3), 0 1px 3px rgb(0 0 0 / 0.4);
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg: #121211;
+  --surface: #1a1a19;
+  --raised: #232321;
+  --line: #35352f;
+
+  --text-primary: #ffffff;
+  --text-secondary: #c3c2b7;
+  --text-muted: #918f85;
+
+  --series-1: #3987e5;
+  --series-2: #d95926;
+
+  --risk-100: #184f95;
+  --risk-250: #256abf;
+  --risk-400: #3987e5;
+  --risk-550: #6da7ec;
+  --risk-700: #b7d3f6;
+
+  --accent: #3987e5;
+  --unknown: #918f85;
+
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.3), 0 1px 3px rgb(0 0 0 / 0.4);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text-primary);
+  font-family: Inter, system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Tabular figures keep metric columns from jittering as values change. */
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+*:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--line);
+  border-radius: 6px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
