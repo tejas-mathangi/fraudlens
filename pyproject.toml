@@ -1,0 +1,66 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fraudlens"
+version = "1.0.0"
+description = "Graph neural network fraud detection on the Elliptic Bitcoin dataset"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Tejas Mathangi" }]
+keywords = ["graph-neural-networks", "fraud-detection", "graphsage", "pytorch-geometric"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: MIT License",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+dependencies = [
+  "torch>=2.2,<3",
+  "torch-geometric>=2.5,<3",
+  "numpy>=1.26,<2",
+  "pandas>=2.1,<3",
+  "scikit-learn>=1.4",
+  "networkx>=3.2",
+  "python-louvain>=0.16",
+  "joblib>=1.3",
+  "matplotlib>=3.8",
+  "seaborn>=0.13",
+]
+
+[project.optional-dependencies]
+api = ["fastapi>=0.110", "uvicorn[standard]>=0.27"]
+dashboard = ["streamlit>=1.30"]
+dev = ["pytest>=8.0", "ruff>=0.4", "httpx>=0.27"]
+
+[project.scripts]
+fraudlens = "fraudlens.cli:main"
+
+[project.urls]
+Repository = "https://github.com/tejas-mathangi/fraudlens"
+
+[tool.setuptools]
+packages = ["fraudlens", "fraudlens.pipeline", "api"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "W"]
+ignore = [
+  "E501",  # long lines are tolerated in the plotting code
+  "B008",  # FastAPI's Depends()/Query() defaults are the documented idiom
+  "B905",  # zip() strict=: every zip here is over arrays of equal length by construction
+]
+
+[tool.ruff.lint.per-file-ignores]
+"dashboard/streamlit_app.py" = ["E402", "I001"]
+"fraudlens/pipeline/eda.py" = ["E402"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+filterwarnings = ["ignore::DeprecationWarning"]
