@@ -1,19 +1,18 @@
 import streamlit as st
 import torch
-import torch.nn.functional as F
 import numpy as np
 import pandas as pd
 import networkx as nx
-import community as community_louvain
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
-import os, sys
 
-sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-from src.graph_builder import build_graph
-from src.model import GraphSAGE
-from src.train import get_train_test_masks, compute_class_weights
-from src.explainer import explain_node
+from fraudlens.config import N_LOCAL_FEATURES, PATHS
+from fraudlens.data import build_graph
+from fraudlens.metrics import load_metrics
+from fraudlens.model import fraud_scores, load_model
+from fraudlens.pipeline.explain import explain_node
+from fraudlens.pipeline.rings import build_nx_graph, is_fraud_ring, louvain_partition
+from fraudlens.pipeline.train import get_train_test_masks
 
 # ── Page config ────────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -68,33 +67,32 @@ st.markdown("""
 # ── Load data and model (cached so it only runs once) ─────────────────────────
 @st.cache_resource
 def load_everything():
-    data, label_mask, node_to_idx = build_graph()
+    """Load the graph, model and scores once per session.
+
+    The graph build is cached on disk by fraudlens.data, so a warm start is seconds
+    rather than the ~30 s it takes to parse the 658 MB feature CSV.
+    """
+    graph = build_graph()
+    data, label_mask, node_to_idx = graph.unpack()
     train_mask, test_mask = get_train_test_masks(label_mask, data.y)
-    class_weights = compute_class_weights(data.y, train_mask)
 
-    model = GraphSAGE(
-        in_channels     = data.num_node_features,
-        hidden_channels = 128,
-        out_channels    = 2,
-        dropout         = 0.3
-    )
-    models_dir = os.path.join(os.path.dirname(__file__), '..', 'models')
-    model.load_state_dict(torch.load(os.path.join(models_dir, 'best_model.pt')))
-    model.eval()
-
-    # Compute fraud scores for all nodes
-    with torch.no_grad():
-        logits     = model(data.x, data.edge_index)
-        probs      = F.softmax(logits, dim=1)
-        fraud_prob = probs[:, 1].numpy()
-
-    # Build NetworkX graph
-    edge_index_np = data.edge_index.numpy()
-    G = nx.Graph()
-    G.add_nodes_from(range(data.num_nodes))
-    G.add_edges_from(zip(edge_index_np[0], edge_index_np[1]))
+    model = load_model(graph.num_features, PATHS.checkpoint)
+    fraud_prob = fraud_scores(model, data).numpy()
+    G = build_nx_graph(data.edge_index, graph.num_nodes)
 
     return data, model, fraud_prob, G, label_mask, test_mask, node_to_idx
+
+
+@st.cache_resource(show_spinner=False)
+def cached_partition():
+    """Louvain on the full graph costs 1-2 minutes; cache it on disk and in session."""
+    return louvain_partition(G, PATHS)
+
+
+@st.cache_data(show_spinner=False)
+def cached_metrics():
+    """Reported numbers come from artifacts/metrics.json, never from literals."""
+    return load_metrics(PATHS.metrics_json)
 
 
 # ── Header ─────────────────────────────────────────────────────────────────────
@@ -105,11 +103,11 @@ st.markdown('<div class="sub-header">Graph Neural Network Based Fraud Detection 
 # ── Loading ────────────────────────────────────────────────────────────────────
 with st.spinner("Loading model and graph... (first load takes ~30 seconds)"):
     data, model, fraud_prob, G, label_mask, test_mask, node_to_idx = load_everything()
+metrics = cached_metrics()
 
 y_np = data.y.numpy()
 
 # ── Sidebar ────────────────────────────────────────────────────────────────────
-st.sidebar.image("https://img.icons8.com/color/96/graph.png", width=60)
 st.sidebar.title("FraudLens")
 st.sidebar.markdown("---")
 page = st.sidebar.radio(
@@ -141,7 +139,8 @@ if page == "📊 Overview":
     with col4:
         st.metric("High Risk Nodes", f"{(fraud_prob > 0.7).sum():,}")
     with col5:
-        st.metric("Model AUC", "0.9885")
+        gnn_auc = metrics.get("models", {}).get("graphsage", {}).get("auc")
+        st.metric("Model AUC", f"{gnn_auc:.4f}" if gnn_auc else "n/a")
 
     st.markdown("---")
 
@@ -240,7 +239,7 @@ elif page == "🔎 Node Inspector":
         st.markdown("<br>", unsafe_allow_html=True)
         inspect_btn = st.button("🔍 Inspect Node", use_container_width=True)
 
-    if inspect_btn or True:
+    if inspect_btn:
         node_idx   = int(node_input)
         score      = fraud_prob[node_idx]
         true_label = y_np[node_idx]
@@ -291,7 +290,7 @@ elif page == "🔎 Node Inspector":
 
         # Sample for visualization
         if len(subset_np) > 80:
-            keep = np.random.choice(len(subset_np), 80, replace=False)
+            keep = np.random.default_rng(42).choice(len(subset_np), 80, replace=False)
             keep = np.sort(keep)
             subset_np_viz = subset_np[keep]
             target_local  = mapping.item()
@@ -346,36 +345,36 @@ elif page == "💀 Fraud Rings":
     st.header("Fraud Ring Detection")
     st.markdown("Communities detected via Louvain clustering on the transaction graph.")
 
-    with st.spinner("Running Louvain community detection..."):
-        partition     = community_louvain.best_partition(G, random_state=42)
-        comm_labels   = np.array([partition[i] for i in range(data.num_nodes)])
-        n_communities = len(set(partition.values()))
+    with st.spinner("Loading Louvain communities (cached after the first run)..."):
+        comm_labels   = cached_partition()
+        n_communities = int(comm_labels.max()) + 1
 
     st.success(f"Detected {n_communities} communities across {data.num_nodes:,} nodes")
 
     # ── Find fraud rings ───────────────────────────────────────────────────────
+    # The promotion rule lives in fraudlens.pipeline.rings so the dashboard and the
+    # pipeline cannot drift apart.
     fraud_rings = []
-    for comm_id in range(n_communities):
-        members  = np.where(comm_labels == comm_id)[0]
-        if len(members) < 3:
+    order      = np.argsort(comm_labels, kind="stable")
+    boundaries = np.flatnonzero(np.diff(comm_labels[order])) + 1
+    for members in np.split(order, boundaries):
+        labeled = members[y_np[members] != -1]
+        if labeled.size == 0:
             continue
-        labeled  = members[y_np[members] != -1]
-        if len(labeled) == 0:
-            continue
-        n_ill    = (y_np[labeled] == 1).sum()
-        ill_rate = n_ill / len(labeled)
-        avg_sc   = fraud_prob[members].mean()
-        if ill_rate > 0.4 and avg_sc > 0.4 and n_ill >= 2:
+        n_ill    = int((y_np[labeled] == 1).sum())
+        ill_rate = n_ill / labeled.size
+        avg_sc   = float(fraud_prob[members].mean())
+        if is_fraud_ring(ill_rate, avg_sc, n_ill, members.size):
             fraud_rings.append({
-                'Community': comm_id,
-                'Size':      len(members),
-                'Illicit':   int(n_ill),
-                'Illicit %': f"{ill_rate*100:.1f}%",
-                'Avg Score': round(float(avg_sc), 4),
-                'members':   members
+                'Community':   int(comm_labels[members[0]]),
+                'Size':        int(members.size),
+                'Illicit':     n_ill,
+                'Illicit %':   round(ill_rate * 100, 1),
+                'Avg Score':   round(avg_sc, 4),
+                'members':     members,
             })
 
-    fraud_rings.sort(key=lambda x: float(x['Illicit %'].strip('%')), reverse=True)
+    fraud_rings.sort(key=lambda x: x['Illicit %'], reverse=True)
 
     # ── Summary metrics ────────────────────────────────────────────────────────
     c1, c2, c3 = st.columns(3)
@@ -404,7 +403,7 @@ elif page == "💀 Fraud Rings":
 
     ring_nodes = selected_ring['members']
     if len(ring_nodes) > 80:
-        ring_nodes = np.random.choice(ring_nodes, 80, replace=False)
+        ring_nodes = np.random.default_rng(42).choice(ring_nodes, 80, replace=False)
 
     G_ring = G.subgraph(ring_nodes.tolist())
     pos    = nx.spring_layout(G_ring, seed=42, k=0.8)
@@ -465,8 +464,6 @@ elif page == "🧠 Explainer":
         explain_btn = st.button("🧠 Explain This Node", use_container_width=True)
 
     # Show some high-confidence fraud nodes as suggestions
-    with torch.no_grad():
-        logits = model(data.x, data.edge_index)
     test_indices  = torch.where(test_mask)[0].numpy()
     top_fraud     = sorted([i for i in test_indices if y_np[i] == 1],
                             key=lambda i: fraud_prob[i], reverse=True)[:5]
@@ -481,9 +478,14 @@ elif page == "🧠 Explainer":
         st.progress(float(score))
 
         with st.spinner("Running explainer (10-20 seconds)..."):
-            result = explain_node(model, data, node_idx, n_epochs=150)
-            (edge_mask, feature_mask, sub_edge_index,
-             subset, target_local_idx, pred_class, pred_prob) = result
+            exp = explain_node(model, data, node_idx, fraud_prob=fraud_prob)
+            edge_mask       = exp.edge_mask
+            feature_mask    = exp.feature_importance
+            sub_edge_index  = exp.sub_edge_index
+            subset_np       = exp.subset
+            target_local_idx = exp.target_local_idx
+            pred_class      = exp.predicted_class
+            pred_prob       = exp.probability
 
         pred_label = 'ILLICIT' if pred_class == 1 else 'LICIT'
         true_label = {1: 'Illicit', 0: 'Licit', -1: 'Unknown'}[y_np[node_idx]]
@@ -501,10 +503,9 @@ elif page == "🧠 Explainer":
             st.subheader("Explanation Subgraph")
             st.markdown("Edges colored by importance — darker red = stronger influence on prediction")
 
-            subset_np = subset.numpy()
             G_exp = nx.DiGraph()
             G_exp.add_nodes_from(range(len(subset_np)))
-            edge_arr = sub_edge_index.numpy()
+            edge_arr = sub_edge_index
             for e_idx in range(edge_arr.shape[1]):
                 G_exp.add_edge(edge_arr[0, e_idx], edge_arr[1, e_idx],
                                weight=float(edge_mask[e_idx]))
@@ -573,12 +574,18 @@ elif page == "🧠 Explainer":
             plt.close()
 
             # Interpretation
-            top_feat_idx = top15_idx[0]
-            feat_type = "neighborhood aggregation" if top_feat_idx >= 93 else "local transaction"
+            top_feat_idx = int(top15_idx[0])
+            is_aggregated = top_feat_idx >= N_LOCAL_FEATURES
+            feat_type = "neighborhood aggregation" if is_aggregated else "local transaction"
+            driver = (
+                "the transaction's network connections"
+                if is_aggregated
+                else "the transaction's own behavior"
+            )
             st.info(
-                f"**Top feature: f{top_feat_idx+1}**\n\n"
-                f"This is a **{feat_types} feature**, suggesting the prediction "
-                f"is driven by {'the node\'s network connections' if top_feat_idx >= 93 else 'the node\'s own transaction behavior'}."
+                f"**Top feature: f{top_feat_idx + 1}**\n\n"
+                f"This is a **{feat_type}** feature, so the prediction is driven by "
+                f"{driver}."
             )
 
 
