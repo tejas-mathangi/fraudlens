@@ -13,7 +13,30 @@
 Detects fraud at three levels — individual transactions, coordinated **fraud rings**,
 and a per-prediction **explanation** of *why* something was flagged.
 
+![FraudLens console](docs/screenshots/overview.png)
+
 </div>
+
+---
+
+## The console
+
+A React + TypeScript console over the FastAPI service. Six views, dark and light,
+keyboard-searchable by node index **or** real Elliptic `txId`.
+
+| | |
+|---|---|
+| ![Graph explorer](docs/screenshots/explorer.png) | ![Fraud rings](docs/screenshots/rings.png) |
+| **Graph explorer** — a connected, fraud-rich slice of the network. Click any node to isolate its 2-hop neighbourhood; everything else dims. | **Fraud rings** — Louvain communities ranked by illicit concentration, each with its induced subgraph and member list. |
+| ![Explainability](docs/screenshots/explain.png) | ![Model](docs/screenshots/model.png) |
+| **Explainability** — feature attributions split into local vs neighbourhood features, plus a plain-English verdict: was this flagged for what it did, or for the company it keeps? | **Model** — training curves, precision-recall for both models, and a confusion matrix that highlights false negatives. |
+
+A note on the visual encoding: node colour is the **model's score** on a single-hue ramp,
+never the ground-truth label. The obvious `illicit = red / licit = green` pairing was
+measured and rejected — it scores ΔE 4.1 under deuteranopia simulation, meaning the two
+classes are the same colour to a red-green colourblind reader. Chart identity uses blue
+and orange, which clear every contrast and colour-vision gate in both themes. True labels
+appear as text-bearing badges, so colour is never the only channel carrying meaning.
 
 ---
 
@@ -107,24 +130,39 @@ cd fraudlens
 make setup          # venv + dependencies + editable install
 ```
 
-### Without the dataset
-
-The API boots straight into artifact mode:
+### Without the dataset — works immediately
 
 ```bash
-make api            # http://localhost:8000/docs
+make web            # console on http://localhost:5173
 ```
 
-### With the dataset
+The console ships with sample artifacts, so every view renders on a fresh clone. It
+displays a persistent **Sample data** banner while those are in use, because the figures
+come from a synthetic graph rather than the real Elliptic network.
+
+Add the API if you want the OpenAPI docs too:
+
+```bash
+make api            # http://localhost:8000/docs  (starts in artifact mode)
+```
+
+### With the dataset — the real thing
 
 ```bash
 python scripts/download_data.py   # needs Kaggle credentials (~697 MB)
 make all                          # EDA -> baseline -> rings -> explain -> export
 make api                          # now in live mode
-make dashboard                    # Streamlit analyst view
+make web                          # banner gone, real numbers
+make dashboard                    # optional Streamlit analyst view
 ```
 
 Training is opt-in because it is slow: `make train`, or `fraudlens all --train`.
+
+### Containers
+
+```bash
+docker compose up --build         # console on :8080, API on :8000
+```
 
 ---
 
@@ -166,7 +204,20 @@ See [`.env.example`](.env.example) for the full list.
 | `GET /api/explain/candidates` | nodes worth explaining |
 | `GET /api/search?q=` | resolve a node index **or** an Elliptic `txId` |
 
-Interactive docs at `/docs`.
+Interactive docs at `/docs`. The console calls these same endpoints and falls back to
+`web/public/demo/*.json` when none of them answer, which is what lets the static build
+deploy anywhere with no backend at all.
+
+### Frontend stack
+
+| Component | Choice | Why |
+|---|---|---|
+| Build | Vite + React 18 + TypeScript | fast HMR, no framework server needed for a static deploy |
+| Styling | Tailwind CSS v3 + CSS custom properties | tokens live in one file, so both themes swap in one place |
+| Charts | Recharts | enough for the seven figures here without a d3 layer to maintain |
+| Graph | `react-force-graph-2d` | canvas, handles a few thousand nodes, and pulls in no three.js |
+| Icons | lucide-react | tree-shakeable |
+| Routing | react-router-dom (hash) | deep links work on static hosts with no server rewrites |
 
 ---
 
@@ -188,10 +239,19 @@ fraudlens/
 │       ├── rings.py        # Louvain community detection
 │       └── explain.py      # input-gradient saliency
 ├── api/                    # FastAPI service (live + artifact modes)
+│   ├── main.py             # app factory, CORS, background loading
+│   ├── state.py            # the live/artifact mode split
+│   └── routes.py           # endpoints, identical shapes in both modes
+├── web/                    # React + TypeScript console
+│   ├── src/lib/api.ts      # API-then-static data layer
+│   ├── src/components/     # ui/ charts/ graph/ shell/
+│   ├── src/pages/          # one file per route
+│   └── public/demo/        # sample artifacts for the static demo
 ├── dashboard/              # Streamlit analyst dashboard
-├── tests/                  # 52 tests, all on synthetic fixtures
-├── scripts/                # dataset download
+├── tests/                  # 69 tests, all on synthetic fixtures
+├── scripts/                # dataset download, sample-artifact generation
 ├── artifacts/              # generated JSON (committed)
+├── docs/                   # screenshots, UML, architecture notes
 ├── notebooks/              # generated plots
 ├── data/                   # Elliptic CSVs (not tracked)
 └── models/                 # checkpoints (not tracked)
@@ -251,9 +311,11 @@ Not redistributed here (Kaggle licence). Run `python scripts/download_data.py`.
 ## Development
 
 ```bash
-make test     # pytest — runs without the dataset, on synthetic fixtures
-make lint     # ruff
-make fmt      # ruff --fix
+make test       # pytest — runs without the dataset, on synthetic fixtures
+make lint       # ruff
+make typecheck  # tsc --noEmit on the console
+make web-build  # production bundle
+make sample     # regenerate the synthetic demo artifacts
 ```
 
 `tests/test_model.py` pins the checkpoint's `state_dict` key set: `best_model.pt` is a
@@ -264,11 +326,13 @@ would silently break every saved model.
 
 ## Roadmap
 
-- [ ] React + TypeScript console (graph explorer, node inspector, ring and
-      explainability views) on top of the existing API
-- [ ] Docker Compose for one-command local startup
-- [ ] Temporal split evaluation (train on early time steps, test on later ones)
+- [x] React + TypeScript console on top of the API
+- [x] Docker Compose for one-command local startup
+- [ ] Temporal split evaluation (train on early time steps, test on later ones) — the
+      current random split lets the model see the same time period in train and test,
+      which flatters it relative to how fraud detection actually runs
 - [ ] Attention-based aggregation (GAT) comparison
+- [ ] Hosted demo of the static console
 
 ---
 

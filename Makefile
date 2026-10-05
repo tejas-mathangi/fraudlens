@@ -1,4 +1,4 @@
-.PHONY: help setup install data eda baseline train rings explain export all api dashboard test lint fmt clean
+.PHONY: help setup install data eda baseline train rings explain export sample all api web web-build dashboard dev test lint fmt typecheck docker clean
 
 PY ?= python3
 VENV ?= venv
@@ -40,8 +40,20 @@ export: ## Write the JSON artifacts the web console reads
 all: ## Run the full pipeline (reuses an existing checkpoint)
 	$(BIN)/fraudlens all
 
+sample: ## Regenerate the synthetic demo artifacts in web/public/demo
+	$(BIN)/python scripts/make_sample_artifacts.py
+
 api: ## Serve the FastAPI backend on :8000
 	$(BIN)/uvicorn api.main:app --reload --port 8000
+
+web: ## Serve the React console on :5173 (proxies /api to :8000)
+	npm install --prefix web && npm run dev --prefix web
+
+web-build: ## Build the console to web/dist
+	npm ci --prefix web && npm run build --prefix web
+
+dev: ## Run the API and the console together
+	$(MAKE) -j2 api web
 
 dashboard: ## Serve the Streamlit analyst dashboard
 	$(BIN)/streamlit run dashboard/streamlit_app.py
@@ -52,8 +64,15 @@ test: ## Run the test suite
 lint: ## Lint with ruff
 	$(BIN)/ruff check .
 
+typecheck: ## Type-check the frontend
+	npm run typecheck --prefix web
+
+docker: ## Build and run the whole stack in containers
+	docker compose up --build
+
 fmt: ## Auto-fix lint issues
 	$(BIN)/ruff check --fix .
 
 clean: ## Remove caches and build output
-	rm -rf .cache .pytest_cache **/__pycache__ build dist *.egg-info
+	rm -rf .cache .pytest_cache build dist *.egg-info web/dist
+	find . -name __pycache__ -type d -prune -exec rm -rf {} +

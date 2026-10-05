@@ -1,0 +1,22 @@
+# One-command local stack: `docker compose up --build`, then open http://localhost:8080
+#
+# Without a dataset the API starts in artifact mode and serves the committed JSON.
+# To run the real model, drop the Elliptic CSVs into ./data and a checkpoint into
+# ./models and uncomment the volume mounts below.
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      FRAUDLENS_ARTIFACTS_DIR: /app/artifacts
+    # volumes:
+    #   - ./data/elliptic_bitcoin_dataset:/app/data/elliptic_bitcoin_dataset:ro
+    #   - ./models:/app/models:ro
+
+  web:
+    build: ./web
+    ports:
+      - "8080:80"
+    depends_on:
+      - api
