@@ -20,7 +20,7 @@ from dataclasses import dataclass
 import numpy as np
 import torch
 import torch.nn.functional as F
-from torch_geometric.utils import k_hop_subgraph
+from torch_geometric.utils import k_hop_subgraph, subgraph
 
 from fraudlens.config import PATHS, Paths
 from fraudlens.data import Graph, build_graph, feature_group, feature_names
@@ -89,14 +89,28 @@ def explain_node(
     model.eval()
     node_idx = int(node_idx)
 
-    subset, sub_edge_index, mapping, _ = k_hop_subgraph(
+    # Select the neighbourhood on the UNDIRECTED view.
+    #
+    # Elliptic's edge list is directed (BTC flow), and k_hop_subgraph's default
+    # ``source_to_target`` flow walks only the edges pointing *into* the node. That
+    # returned a 2-node "neighbourhood" for a node of degree 8 -- technically the
+    # message-passing receptive field, but useless to look at, and inconsistent with
+    # the degree shown everywhere else in the UI.
+    undirected = torch.cat([data.edge_index, data.edge_index.flip(0)], dim=1)
+    subset, _, mapping, _ = k_hop_subgraph(
         node_idx=node_idx,
         num_hops=num_hops,
-        edge_index=data.edge_index,
+        edge_index=undirected,
         relabel_nodes=True,
         num_nodes=data.num_nodes,
     )
     target_local = int(mapping.item())
+
+    # ...but run the model over the induced *directed* edges, so the gradient flows
+    # through the same structure the model was trained on.
+    sub_edge_index, _ = subgraph(
+        subset, data.edge_index, relabel_nodes=True, num_nodes=data.num_nodes
+    )
 
     # ── Feature saliency ─────────────────────────────────────────────────────
     sub_x = data.x[subset].clone().requires_grad_(True)
