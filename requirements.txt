@@ -1,0 +1,19 @@
+# Runtime dependencies for the pipeline, API and dashboard.
+# torchvision/torchaudio are deliberately absent: nothing in this project imports them.
+torch==2.2.2
+torch-geometric==2.7.0
+numpy==1.26.4
+pandas==2.3.3
+scikit-learn==1.8.0
+networkx==3.6.1
+python-louvain==0.16
+joblib==1.5.3
+matplotlib==3.10.9
+seaborn==0.13.2
+
+# API
+fastapi==0.122.0
+uvicorn==0.47.0
+
+# Analyst dashboard
+streamlit==1.57.0

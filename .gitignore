@@ -1,26 +1,34 @@
-# Virtual environment
+# Virtual environments
 venv/
+.venv/
 
-# Python cache
+# Python
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
+*.py[cod]
+*.egg-info/
+build/
+dist/
 
 # Jupyter
 .ipynb_checkpoints/
 
-# Data files (too large for git)
+# Dataset (~697 MB, Kaggle licensed — see scripts/download_data.py)
 data/
-data/elliptic_bitcoin_dataset/elliptic_txs_features.csv
-data/elliptic_bitcoin_dataset/elliptic_txs_edgelist.csv
-data/elliptic_bitcoin_dataset/elliptic_txs_classes.csv
 
-# Saved models
+# Trained model weights
 models/
 
-# Mac junk
-.DS_Store
+# Derived caches (graph tensors, Louvain partition)
+.cache/
 
-# Environment variables
+# Node / frontend build output
+node_modules/
+web/dist/
+
+# Environment
 .env
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
