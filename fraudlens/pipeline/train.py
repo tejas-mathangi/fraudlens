@@ -19,7 +19,7 @@ from sklearn.model_selection import train_test_split
 from fraudlens.config import PATHS, TRAIN, Paths, TrainConfig
 from fraudlens.data import Graph, build_graph
 from fraudlens.metrics import classification_metrics, update_metrics
-from fraudlens.model import GraphSAGE
+from fraudlens.model import GraphSAGE, load_model
 
 log = logging.getLogger(__name__)
 
@@ -249,6 +249,52 @@ def train(
         final["avg_precision"],
     )
     return final
+
+
+def evaluate_checkpoint(
+    graph: Graph | None = None,
+    cfg: TrainConfig = TRAIN,
+    paths: Paths = PATHS,
+) -> dict[str, object]:
+    """Score the saved checkpoint and record its metrics, without training.
+
+    Useful when a trained model already exists: retraining to refresh
+    ``metrics.json`` would risk replacing a good checkpoint with a worse one, and on
+    this graph costs 10+ minutes for numbers we already have the weights for.
+    """
+    paths.ensure_dirs()
+    if not paths.checkpoint_available():
+        raise FileNotFoundError(f"no checkpoint at {paths.checkpoint}")
+
+    graph = graph or build_graph(paths)
+    data, label_mask = graph.data, graph.label_mask
+    train_mask, test_mask = get_train_test_masks(
+        label_mask, data.y, cfg.test_size, cfg.seed
+    )
+    class_weights = compute_class_weights(data.y, train_mask)
+
+    model = load_model(in_channels=graph.num_features, checkpoint=paths.checkpoint)
+    blob = torch.load(paths.checkpoint, map_location="cpu", weights_only=True)
+
+    result = evaluate(model, data, test_mask, class_weights)
+    payload = dict(result["metrics"])
+    payload["architecture"] = {
+        "layers": 3,
+        "hidden_channels": model.bn1.num_features,
+        "dropout": cfg.dropout,
+        "in_channels": graph.num_features,
+    }
+    if isinstance(blob, dict) and "epoch" in blob:
+        payload["best_epoch"] = int(blob["epoch"])
+    update_metrics(paths.metrics_json, models={"graphsage": payload})
+
+    log.info(
+        "Checkpoint on the held-out test split: AUC %.4f  F1 %.4f  AP %.4f",
+        result["auc"],
+        result["f1"],
+        result["avg_precision"],
+    )
+    return result
 
 
 def main(argv: list[str] | None = None) -> int:

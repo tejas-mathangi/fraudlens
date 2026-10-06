@@ -125,12 +125,22 @@ class RingConfig:
 
 @dataclass(frozen=True)
 class ExportConfig:
-    """Budget for the committed demo artifacts."""
+    """Budget for the committed demo artifacts.
+
+    These exist to keep ``artifacts/`` committable (~1.5 MB) and the static demo quick
+    to load. The caps matter more than they look: on the real dataset the model scores
+    33,696 nodes above the high-risk threshold, almost all of them unlabelled, so an
+    uncapped searchable index came out at 7.4 MB.
+    """
 
     graph_sample_nodes: int = 1500
     max_rings: int = 25
     n_explanations: int = 20
-    nodes_index_licit_sample: int = 1200
+    #: Confirmed-illicit nodes are always included; these cap the rest.
+    nodes_index_high_risk: int = 1500
+    nodes_index_licit_sample: int = 1000
+    #: Neighbours stored per indexed node.
+    nodes_index_neighbours: int = 20
     score_histogram_bins: int = 50
     top_features: int = 25
 

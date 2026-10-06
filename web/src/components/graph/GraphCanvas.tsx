@@ -116,7 +116,7 @@ export function GraphCanvas({
   const radius = useCallback(
     (node: GraphNode) => {
       const scale = Math.sqrt((node.degree || 1) / degreeMax);
-      return 2.2 + scale * 5.5;
+      return 4 + scale * 5.5;
     },
     [degreeMax],
   );
@@ -137,10 +137,13 @@ export function GraphCanvas({
       ctx.fillStyle = riskColorHex(node.score);
       ctx.fill();
 
-      // A 2px surface ring keeps overlapping nodes readable as separate marks.
-      ctx.lineWidth = 1;
-      ctx.strokeStyle = cssVar("--surface", "#1a1a19");
-      ctx.stroke();
+      // A surface-coloured ring separates overlapping marks, but on a sparse graph
+      // it only erodes small dots, so it is reserved for the bigger ones.
+      if (r > 4.5) {
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = cssVar("--surface", "#1a1a19");
+        ctx.stroke();
+      }
 
       if (node.id === focusId || node.id === selectedId) {
         ctx.globalAlpha = 1;
@@ -165,12 +168,12 @@ export function GraphCanvas({
       const faded = dimmed(s.id) && dimmed(t.id);
       const w = weighted ? (link.weight ?? 0.3) : 0.3;
 
-      ctx.globalAlpha = faded ? 0.05 : weighted ? 0.25 + 0.6 * w : 0.3;
+      ctx.globalAlpha = faded ? 0.06 : weighted ? 0.3 + 0.6 * w : 0.5;
       ctx.beginPath();
       ctx.moveTo(s.x ?? 0, s.y ?? 0);
       ctx.lineTo(t.x ?? 0, t.y ?? 0);
       ctx.strokeStyle = weighted ? riskColorHex(w) : cssVar("--text-muted", "#888");
-      ctx.lineWidth = weighted ? 0.4 + 2.2 * w : 0.5;
+      ctx.lineWidth = weighted ? 0.4 + 2.2 * w : 0.8;
       ctx.stroke();
       ctx.globalAlpha = 1;
     },
@@ -193,6 +196,10 @@ export function GraphCanvas({
     if (charge) {
       const n = data.nodes.length;
       // Sparse subgraphs need less push than the full explorer sample.
+      // Tuned by looking at the result. Elliptic's sample is mostly small
+      // components, and stronger repulsion packs them into an evenly-spaced disc
+      // with the edges invisible — worse than a slightly clumped layout that still
+      // shows which nodes are connected.
       const strength = n > 400 ? -85 : -160;
       (charge as unknown as {
         strength: (v: number) => { distanceMax: (d: number) => unknown };

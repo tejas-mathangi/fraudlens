@@ -10,7 +10,10 @@ Every file it writes is tagged ``"synthetic": true``, which makes the console di
 persistent "Sample data" banner. Running `fraudlens export` against the real dataset
 overwrites these with ``"synthetic": false`` and the banner disappears.
 
-    python scripts/make_sample_artifacts.py --out web/public/demo
+    python scripts/make_sample_artifacts.py
+
+It writes to ``artifacts/``, which ``web/public/demo`` symlinks to, so the console picks
+the files up with no copying.
 """
 
 from __future__ import annotations
@@ -133,7 +136,7 @@ def write_synthetic_csvs(target: Path, rng: np.random.Generator) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--out", type=Path, default=Path("web/public/demo"))
+    parser.add_argument("--out", type=Path, default=Path("artifacts"))
     parser.add_argument("--epochs", type=int, default=60)
     parser.add_argument("--seed", type=int, default=7)
     args = parser.parse_args(argv)
