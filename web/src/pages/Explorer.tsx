@@ -14,10 +14,10 @@ import { getGraphSample } from "../lib/api";
 import { num, score } from "../lib/format";
 import type { GraphSample, NodeRecord } from "../lib/types";
 
-const SIZES = [500, 1000, 1500];
+const SIZES = [300, 500, 1000, 1500];
 
 export function ExplorerPage() {
-  const [size, setSize] = useState(1000);
+  const [size, setSize] = useState(500);
   const [minScore, setMinScore] = useState(0);
   const [selected, setSelected] = useState<NodeRecord | null>(null);
 
@@ -71,8 +71,10 @@ export function ExplorerPage() {
         <div>
           <h1 className="text-lg font-semibold">Graph explorer</h1>
           <p className="mt-0.5 text-sm text-ink-secondary">
-            A connected, fraud-rich slice of the transaction network. Click a node to isolate
-            its 2-hop neighbourhood.
+            A fraud-rich slice of the network, seeded from the detected rings. Click a node
+            to isolate its 2-hop neighbourhood. Elliptic averages roughly one edge per
+            transaction, so expect chains and small clusters rather than a dense web — that
+            shape is the data, not the sample.
           </p>
         </div>
 

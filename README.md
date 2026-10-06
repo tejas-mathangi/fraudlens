@@ -60,28 +60,54 @@ itself suspicious* — something no tabular model can represent.
 
 ## Results
 
+Measured on a held-out 20% stratified split of the 46,564 labelled transactions.
+
 | Model | AUC-ROC | F1 (illicit) | Avg precision | Ring detection | Explainability | Inductive |
 |---|---|---|---|---|---|---|
-| Random Forest (baseline) | **0.9958** | **0.9316** | **0.9807** | ✗ | ✗ | ✗ |
+| Random Forest (baseline) | **0.9958** | **0.9354** | **0.9807** | ✗ | ✗ | ✗ |
 | GraphSAGE (FraudLens) | 0.9885 | 0.8833 | 0.9566 | ✓ | ✓ | ✓ |
 
-**10 fraud rings detected**, including a community that is 97.8% confirmed illicit with
-an average fraud score of 0.957.
+**10 fraud rings detected**, covering 382 confirmed-illicit transactions (8.4% of all
+of them). The strongest is community 152 — 39 members, **100% of its labelled nodes
+confirmed illicit**, average fraud score 0.945. Community 206 is 47 members at 97.8%.
 
-### The baseline wins on raw metrics — and that's the interesting part
+### The baseline wins on F1 — but it is not that simple
 
 Elliptic ships **72 pre-engineered neighbourhood-aggregate features** alongside each
 transaction's 93 intrinsic ones. A Random Forest therefore already consumes a
 hand-crafted summary of each transaction's graph context, which is why it scores so
-well. GraphSAGE learns that structure from raw topology instead — and in doing so gains
-three capabilities that are *architecturally impossible* in a tabular model: it can
-cluster coordinated rings, attribute a prediction to specific neighbours and features,
-and generalise to transactions it never saw during training.
+well on aggregate metrics.
+
+Look at the confusion matrices rather than the F1, though, and the picture inverts:
+
+| | Fraud caught | Fraud missed | False alarms | Recall | Precision |
+|---|---|---|---|---|---|
+| Random Forest | 803 | 106 | 5 | 88.3% | 99.4% |
+| GraphSAGE | **840** | **69** | 153 | **92.4%** | 84.6% |
+
+The GNN catches 37 more fraudulent transactions and misses 35% fewer of them. It pays
+for that with 153 false alarms against the forest's 5. Which model is "better" depends
+entirely on the relative cost of a missed fraud versus a false alarm — and in
+anti-money-laundering, a missed fraud is usually the expensive one. That asymmetry is
+exactly what the 5.1× class weighting encodes.
+
+On top of that, GraphSAGE learns structure from raw topology and gains three
+capabilities that are *architecturally impossible* in a tabular model: clustering
+coordinated rings, attributing a prediction to specific neighbours and features, and
+generalising to transactions it never saw during training.
 
 Reporting the baseline honestly, rather than tuning until the GNN "wins", is the point.
 
-> All numbers in this table are read from `artifacts/metrics.json`, which only the
-> pipeline writes. Nothing is hardcoded.
+> Every number above is read from `artifacts/metrics.json`, which only the pipeline
+> writes. Nothing is hardcoded.
+
+### One caveat worth stating
+
+The model flags **33,696 of the 157,205 unlabelled transactions** above the 0.7
+high-risk threshold — about 21% of them. With only 2.2% of labelled data illicit, that
+is almost certainly an over-estimate, and it is what the class weighting buys: high
+recall at the cost of precision on data the model has no ground truth for. Treat the
+unlabelled scores as a triage queue, not as verdicts.
 
 ---
 
@@ -246,7 +272,7 @@ fraudlens/
 │   ├── src/lib/api.ts      # API-then-static data layer
 │   ├── src/components/     # ui/ charts/ graph/ shell/
 │   ├── src/pages/          # one file per route
-│   └── public/demo/        # sample artifacts for the static demo
+│   └── public/demo -> ../../artifacts   # symlink: one copy of the JSON in git
 ├── dashboard/              # Streamlit analyst dashboard
 ├── tests/                  # 69 tests, all on synthetic fixtures
 ├── scripts/                # dataset download, sample-artifact generation
@@ -304,7 +330,14 @@ interactive UI is not viable.
 | Licit | 42,019 (20.6%) |
 | Unknown | 157,205 (77.1%) |
 
-Not redistributed here (Kaggle licence). Run `python scripts/download_data.py`.
+Not redistributed here (licence). `python scripts/download_data.py` pulls it from
+Kaggle with your credentials; PyTorch Geometric also mirrors the same three CSVs at
+`data.pyg.org`, which needs no account:
+
+```python
+from torch_geometric.datasets import EllipticBitcoinDataset
+EllipticBitcoinDataset(root="data/_pyg")   # CSVs land in data/_pyg/raw/
+```
 
 ---
 

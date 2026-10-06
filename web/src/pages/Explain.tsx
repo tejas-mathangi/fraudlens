@@ -115,7 +115,7 @@ export function ExplainPage() {
                 }`}
               >
                 <span className="font-mono">#{c.idx}</span>
-                <span className="tnum text-ink-secondary">{score(c.score, 3)}</span>
+                <span className="tnum text-ink-secondary">{score(c.score, 4)}</span>
                 <LabelBadge label={c.label} />
               </button>
             ))}

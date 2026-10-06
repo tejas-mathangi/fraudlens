@@ -65,6 +65,15 @@ def cmd_train(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_evaluate(args: argparse.Namespace) -> int:
+    from fraudlens.pipeline.train import evaluate_checkpoint
+
+    if not _check_checkpoint():
+        return 1
+    evaluate_checkpoint()
+    return 0
+
+
 def cmd_rings(args: argparse.Namespace) -> int:
     from fraudlens.pipeline.rings import detect_rings
 
@@ -109,7 +118,12 @@ def cmd_all(args: argparse.Namespace) -> int:
         from fraudlens.pipeline.train import train
 
         train(graph=graph)
-    elif not _check_checkpoint():
+    elif _check_checkpoint():
+        # Refresh the GNN's metrics from the weights we already have.
+        from fraudlens.pipeline.train import evaluate_checkpoint
+
+        evaluate_checkpoint(graph=graph)
+    else:
         log.error("Pass --train to train a model as part of `all`.")
         return 1
 
@@ -140,6 +154,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--epochs", type=int, default=None)
     p.add_argument("--resume", action="store_true")
     p.set_defaults(func=cmd_train)
+
+    sub.add_parser(
+        "evaluate", help="score the saved checkpoint without retraining"
+    ).set_defaults(func=cmd_evaluate)
 
     p = sub.add_parser("rings", help="detect fraud rings")
     p.add_argument("--no-cache", action="store_true")

@@ -141,43 +141,57 @@ def sample_connected_subgraph(
     rings: list[Ring],
     n_nodes: int,
 ) -> list[int]:
-    """Pick a connected, fraud-rich node sample for the graph explorer.
+    """Pick a node sample that actually looks like a transaction network.
 
-    A uniform random sample of 1,500 nodes out of 203,769 is almost entirely isolated
-    vertices -- visually a dust cloud. Instead we seed from the detected rings and the
-    highest-scoring illicit nodes, then breadth-first expand, which yields a sample
-    that actually looks like a transaction network.
+    Elliptic averages ~1.15 edges per node — globally it is closer to a forest of
+    chains than a dense graph — so neither a uniform sample nor a breadth-first walk
+    produces a picture with any structure in it: both return ~1 induced edge per node
+    and draw as scattered dust.
+
+    The dense structure is inside the detected rings, so the sample is built from
+    *whole* ring communities first. Every intra-ring edge then survives into the
+    induced subgraph and each ring reads as a visible cluster. Remaining budget goes
+    to the highest-scoring illicit nodes and their neighbours, and isolates are
+    dropped at the end.
     """
     indptr, indices = _adjacency(graph)
     y = graph.data.y.numpy()
-
-    seeds: list[int] = []
-    for ring in rings[:8]:
-        seeds.extend(ring.members[:40])
-    illicit = np.where(y == 1)[0]
-    seeds.extend(int(i) for i in illicit[np.argsort(scores[illicit])[::-1][:120]])
-
     selected: set[int] = set()
-    queue: deque[int] = deque(dict.fromkeys(seeds))
-    while queue and len(selected) < n_nodes:
-        node = queue.popleft()
-        if node in selected:
-            continue
-        selected.add(node)
-        for nb in neighbours(indptr, indices, node):
-            nb = int(nb)
-            if nb not in selected and len(selected) + len(queue) < n_nodes * 2:
-                queue.append(nb)
+
+    # Whole communities, largest-first, while they fit.
+    for ring in sorted(rings, key=lambda r: -r.size):
+        if len(selected) >= n_nodes:
+            break
+        room = n_nodes - len(selected)
+        members = ring.members
+        if len(members) > room:
+            # Keep the most suspicious slice of an oversized ring rather than a
+            # random one, so what is shown is the part worth looking at.
+            members = sorted(members, key=lambda m: -scores[m])[:room]
+        selected.update(int(m) for m in members)
+
+    # Then the highest-scoring confirmed fraud outside those rings, with neighbours,
+    # so the picture is not only rings.
+    if len(selected) < n_nodes:
+        illicit = np.where(y == 1)[0]
+        ranked = illicit[np.argsort(scores[illicit])[::-1]]
+        queue: deque[int] = deque(int(i) for i in ranked if int(i) not in selected)
+        while queue and len(selected) < n_nodes:
+            node = queue.popleft()
+            selected.add(node)
+            for nb in neighbours(indptr, indices, node):
+                nb = int(nb)
+                if nb not in selected and len(selected) < n_nodes:
+                    selected.add(nb)
 
     # Drop isolates: a node with no selected neighbour adds nothing to the picture.
-    keep = np.fromiter(selected, dtype=np.int64)
-    keep_set = set(keep.tolist())
+    keep_set = selected
     connected = [
-        int(node)
-        for node in keep
+        node
+        for node in sorted(keep_set)
         if any(int(nb) in keep_set for nb in neighbours(indptr, indices, node))
     ]
-    return sorted(connected)[:n_nodes]
+    return connected[:n_nodes]
 
 
 def induced_edges(graph: Graph, nodes: list[int]) -> list[list[int]]:
@@ -205,6 +219,7 @@ def node_record(
     indices: np.ndarray,
     node: int,
     with_neighbours: bool = False,
+    neighbour_cap: int = 20,
 ) -> dict[str, Any]:
     """The per-node payload shared by every endpoint and artifact."""
     y = graph.data.y.numpy()
@@ -219,13 +234,16 @@ def node_record(
         "degree": int(nbrs.size),
     }
     if with_neighbours:
+        # Highest-risk neighbours first: if the list has to be truncated, those are
+        # the ones that explain the verdict.
+        ranked = nbrs[np.argsort(scores[nbrs])[::-1]][:neighbour_cap] if nbrs.size else nbrs
         record["neighbors"] = [
             {
                 "idx": int(nb),
                 "score": round(float(scores[nb]), 4),
                 "label": _label_name(y[nb]),
             }
-            for nb in nbrs[:50]
+            for nb in ranked
         ]
     return record
 
@@ -342,8 +360,14 @@ def export_all(
     )
 
     # ── searchable node index ────────────────────────────────────────────────
+    # Every confirmed-illicit node, the highest-scoring unlabelled ones, and a licit
+    # sample for contrast. The high-risk set is capped by score rather than taken
+    # whole: 33,696 nodes clear the threshold on the real dataset, which produced a
+    # 7.4 MB index that is both unusable in a browser and too big to commit.
     illicit = np.where(y == 1)[0]
-    high = np.where(scores > HIGH_RISK_THRESHOLD)[0]
+    high_pool = np.where((scores > HIGH_RISK_THRESHOLD) & (y != 1))[0]
+    high = high_pool[np.argsort(scores[high_pool])[::-1]][: cfg.nodes_index_high_risk]
+
     rng = np.random.default_rng(42)
     licit_pool = np.where(y == 0)[0]
     licit_sample = rng.choice(
@@ -359,9 +383,22 @@ def export_all(
         {
             "synthetic": False,
             "nodes": [
-                node_record(graph, scores, indptr, indices, n, with_neighbours=True)
+                node_record(
+                    graph,
+                    scores,
+                    indptr,
+                    indices,
+                    n,
+                    with_neighbours=True,
+                    neighbour_cap=cfg.nodes_index_neighbours,
+                )
                 for n in index_nodes
             ],
+            "note": (
+                f"All {illicit.size} confirmed-illicit nodes, the top "
+                f"{high.size} unlabelled by score, and a {licit_sample.size}-node "
+                "licit sample."
+            ),
         },
     )
 

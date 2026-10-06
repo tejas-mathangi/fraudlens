@@ -33,11 +33,18 @@
   --series-1: #2a78d6;
   --series-2: #eb6834;
 
-  /* Sequential blue ramp, light → dark (risk magnitude) */
-  --risk-100: #cde2fb;
-  --risk-250: #86b6ef;
-  --risk-400: #3987e5;
-  --risk-550: #1c5cab;
+  /*
+   * Sequential blue ramp for risk magnitude, low → high.
+   *
+   * Both ends are validated against the surface rather than chosen by eye: the
+   * low end has to stay visible (>= 2:1) because most nodes are low risk, and the
+   * adjacent steps need >= 0.06 lightness separation to read as distinct levels.
+   * Light mode: low end 2.06:1, all step gaps pass.
+   */
+  --risk-100: #86b6ef;
+  --risk-250: #5598e7;
+  --risk-400: #2a78d6;
+  --risk-550: #184f95;
   --risk-700: #0d366b;
 
   --status-good: #0ca30c;
@@ -66,11 +73,11 @@
     --series-1: #3987e5;
     --series-2: #d95926;
 
-    --risk-100: #184f95;
-    --risk-250: #256abf;
-    --risk-400: #3987e5;
-    --risk-550: #6da7ec;
-    --risk-700: #b7d3f6;
+    --risk-100: #256abf;
+    --risk-250: #3987e5;
+    --risk-400: #6da7ec;
+    --risk-550: #9ec5f4;
+    --risk-700: #cde2fb;
 
     --accent: #3987e5;
     --unknown: #918f85;
@@ -94,11 +101,11 @@
   --series-1: #3987e5;
   --series-2: #d95926;
 
-  --risk-100: #184f95;
-  --risk-250: #256abf;
-  --risk-400: #3987e5;
-  --risk-550: #6da7ec;
-  --risk-700: #b7d3f6;
+  --risk-100: #256abf;
+  --risk-250: #3987e5;
+  --risk-400: #6da7ec;
+  --risk-550: #9ec5f4;
+  --risk-700: #cde2fb;
 
   --accent: #3987e5;
   --unknown: #918f85;
