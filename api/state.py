@@ -131,7 +131,9 @@ class Backend:
             scores = fraud_scores(model, graph.data).numpy()
             indptr, indices = _adjacency(graph)
             log.info("Detecting fraud rings...")
-            rings, _, _ = detect_rings(graph, fraud_prob=scores, paths=self.paths)
+            rings, _, _ = detect_rings(
+                graph, fraud_prob=scores, paths=self.paths, write_metrics=False
+            )
 
             with self._lock:
                 self.graph = graph

@@ -113,11 +113,16 @@ def detect_rings(
     paths: Paths = PATHS,
     cfg: RingConfig = RINGS,
     use_cache: bool = True,
+    write_metrics: bool = True,
 ) -> tuple[list[Ring], np.ndarray, np.ndarray]:
     """Find fraud rings.
 
     Returns the ranked rings, the community label per node, and the fraud scores used
     (recomputed from the checkpoint when not supplied).
+
+    ``write_metrics`` exists because the API calls this on startup: a GET request has
+    no business rewriting a committed file, and leaving it on meant simply browsing
+    the console left ``artifacts/metrics.json`` modified in git.
     """
     paths.ensure_dirs()
     graph = graph or build_graph(paths)
@@ -178,7 +183,8 @@ def detect_rings(
         "communities_total": int(labels.max()) + 1 if labels.size else 0,
         "thresholds": asdict(cfg),
     }
-    update_metrics(paths.metrics_json, rings=stats)
+    if write_metrics:
+        update_metrics(paths.metrics_json, rings=stats)
 
     log.info(
         "Detected %d fraud rings covering %d illicit nodes (%.1f%% of all illicit)",

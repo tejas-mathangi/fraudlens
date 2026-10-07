@@ -48,3 +48,25 @@ def test_louvain_partition_is_cached(graph, paths):
     assert paths.partition_cache.is_file()
     second = louvain_partition(g, paths, use_cache=True)
     assert (first == second).all()
+
+
+def test_detect_rings_can_skip_writing_metrics(graph, paths):
+    """The API loads rings on startup; a GET must not mutate a committed file."""
+    import json
+
+    from fraudlens.model import GraphSAGE, fraud_scores
+    from fraudlens.pipeline.rings import detect_rings
+
+    model = GraphSAGE(in_channels=graph.num_features, hidden_channels=8)
+    scores = fraud_scores(model, graph.data).numpy()
+
+    paths.metrics_json.write_text(json.dumps({"models": {}, "sentinel": True}))
+    before = paths.metrics_json.read_text()
+
+    detect_rings(graph, fraud_prob=scores, paths=paths, write_metrics=False)
+    assert paths.metrics_json.read_text() == before
+
+    detect_rings(graph, fraud_prob=scores, paths=paths, write_metrics=True)
+    after = json.loads(paths.metrics_json.read_text())
+    assert "rings" in after
+    assert after["sentinel"] is True  # merged, not clobbered
