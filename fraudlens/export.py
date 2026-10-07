@@ -265,7 +265,7 @@ def export_all(
     indptr, indices = _adjacency(graph)
     y = graph.data.y.numpy()
 
-    rings, _, _ = detect_rings(graph, fraud_prob=scores, paths=paths)
+    rings, _, _ = detect_rings(graph, fraud_prob=scores, paths=paths, write_metrics=True)
     metrics = load_metrics(paths.metrics_json)
     sizes: dict[str, int] = {}
 
